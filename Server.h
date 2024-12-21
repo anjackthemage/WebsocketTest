@@ -1,6 +1,9 @@
 #pragma once
 
 #include "winsock2.h"
+#include "vector"
+
+class Client;
 
 class Server
 {
@@ -11,9 +14,15 @@ public:
 	
 	int Start();
 
+	int Stop();
+
+	void ListenForIncomingConnections();
+
+	void HandleIncomingConnections();
+
 	SOCKET ListenSocket = NULL;
 
-	SOCKET ClientSocket = NULL;
+	SOCKET client_socket = NULL;
 
 	char* sec_websock_key = NULL;
 
@@ -23,4 +32,10 @@ public:
 	static const int recvbuflen = 512;
 	// Buffer used to receive data
 	char recvbuf[recvbuflen];
+
+	// True when server is shutting down
+	bool b_shutdown = false;
+
+	// Vector containing connected clients.
+	std::vector<Client*> clients;
 };
