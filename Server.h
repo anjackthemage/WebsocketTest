@@ -20,6 +20,8 @@ public:
 
 	void HandleIncomingConnections();
 
+	void CheckForIncomingMessages();
+
 	SOCKET ListenSocket = NULL;
 
 	SOCKET client_socket = NULL;

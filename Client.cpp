@@ -223,7 +223,7 @@ int Client::Start(SOCKET& InConnectSocket)
 	strcpy(encoded_message + 2, test_message);
 
 	// Send the message to the client
-	iResult = send(ConnectSocket, encoded_message, strlen(test_message) + 2, 0);
+	iResult = send(ConnectSocket, encoded_message, strlen(encoded_message), 0);
 	if (iResult == SOCKET_ERROR) {
 		printf("send failed: %d\n", WSAGetLastError());
 		goto quit;
@@ -235,4 +235,112 @@ int Client::Start(SOCKET& InConnectSocket)
 quit:
 
 	return iResult;
+}
+
+int Client::Stop()
+{
+	b_shutdown = true;
+	return 0;
+}
+
+bool Client::IsMessagePending()
+{
+	// Use select() to check if there's a pending connection on ListenSocket
+	// https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-select
+	fd_set readfds;
+	FD_ZERO(&readfds);
+	FD_SET(ConnectSocket, &readfds);
+	timeval timeout;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 0;
+	int select_result = select(0, &readfds, NULL, NULL, &timeout);
+	return (select_result != SOCKET_ERROR && select_result != 0);
+}
+
+void Client::HandleIncomingMessage()
+{
+	// Clear the receive buffer
+	memset(recvbuf, 0, recvbuflen);
+		
+	// Receive data from the client
+	int iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
+
+	// Check if the connection was successful
+	if (iResult != SOCKET_ERROR) {
+		printf("Bytes received: %d\n", iResult);
+
+		// Decoding the message: https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_servers
+		/**
+		 * First byte:
+		 *	bit 0: FIN
+		 *	bit 1: RSV1
+		 *	bit 2: RSV2
+		 *	bit 3: RSV3
+		 *	bits 4-7 OPCODE
+		 * 
+		 * Bytes 2-10: payload length
+		 * 
+		 * Bytes 11-14: mask key
+		 * 
+		 * All following bytes: payload data
+		 */
+		
+		// Extract the opcode from the first byte of the received WebSocket frame.
+		// The opcode is stored in the lower 4 bits (0x0F mask) of the first byte.
+		uint8_t opcode = recvbuf[0] & 0x0F;
+
+		// Extract the payload length from the second byte of the received WebSocket frame.
+		// The payload length is stored in the lower 7 bits (0x7F mask) of the second byte.
+		uint8_t payload_length = recvbuf[1] & 0x7F;
+
+		// Extract the mask bit from the second byte of the received WebSocket frame.
+		// The mask bit is stored in the highest bit (0x80 mask) of the second byte.
+		uint8_t mask = recvbuf[1] & 0x80;
+
+		// Pointer to the mask key, which is located immediately after the payload length.
+		// The mask key is 4 bytes long and starts at the third byte of the received frame.
+		uint8_t* mask_key = (uint8_t*)(recvbuf + 2);
+
+		// Pointer to the payload data, which is located immediately after the mask key.
+		// The payload data starts at the seventh byte of the received frame.
+		uint8_t* payload_data = (uint8_t*)(recvbuf + 6);
+
+		// Unmask the payload
+		for (int i = 0; i < payload_length; i++) {
+			payload_data[i] = payload_data[i] ^ mask_key[i % 4];
+		}
+
+		// From the websocket spec: https://datatracker.ietf.org/doc/html/rfc6455#section-5.1
+		/**
+		 *  Opcode:  4 bits
+		 *
+		 * Defines the interpretation of the "Payload data".  If an unknown
+		 * opcode is received, the receiving endpoint MUST _Fail the
+		 * WebSocket Connection_.  The following values are defined.
+		 *
+		 *	%x0 denotes a continuation frame
+		 *
+		 *	%x1 denotes a text frame
+		 *
+		 *	%x2 denotes a binary frame
+		 *
+		 *	%x3-7 are reserved for further non-control frames
+		 *
+		 *	%x8 denotes a connection close
+		 *
+		 *	%x9 denotes a ping
+		 *
+		 *	%xA denotes a pong
+		 *
+		 *	%xB-F are reserved for further control frames
+		 */
+		// Print the opcode in hex
+		printf("Opcode: 0x%x\n", opcode);
+
+		// Print the payload
+		printf("Payload: %s\n", payload_data);
+	}
+	else {
+		printf("recv failed: %d\n", WSAGetLastError());
+	}
 }

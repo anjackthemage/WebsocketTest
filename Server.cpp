@@ -156,6 +156,9 @@ void Server::ListenForIncomingConnections()
 		HandleIncomingConnections();
 
 		// #TODO: Implement client heartbeat check
+
+		// Check for incoming messages
+		CheckForIncomingMessages();
 	}
 }
 
@@ -221,6 +224,17 @@ void Server::HandleIncomingConnections()
 			clients.pop_back();
 			// Delete client object
 			delete client;
+		}
+	}
+}
+
+void Server::CheckForIncomingMessages()
+{
+	// Cycle through clients and check for incoming messages
+	for (Client* client : clients) {
+		if (client->IsMessagePending())
+		{
+			client->HandleIncomingMessage();
 		}
 	}
 }
